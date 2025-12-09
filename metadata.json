@@ -1,0 +1,9 @@
+{
+  "name": "Rakshak Drone Command",
+  "description": "Next-gen autonomous disaster-relief drone controller with AI-assisted navigation and landing.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

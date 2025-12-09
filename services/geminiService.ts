@@ -1,0 +1,80 @@
+import { GoogleGenAI, Type } from "@google/genai";
+import { LandingAnalysis } from "../types";
+
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// System instruction for the drone AI
+const DRONE_SYSTEM_INSTRUCTION = `
+You are the AI navigation brain of "Rakshak", a disaster relief drone. 
+Your job is to analyze images of potential landing zones.
+Assess the safety for landing a drone carrying medical supplies.
+Consider: Slope, Debris (water, rubble), Surface Stability, and overhead obstructions.
+Return strict JSON.
+`;
+
+export const analyzeLandingZone = async (base64Image: string): Promise<LandingAnalysis> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Image
+            }
+          },
+          {
+            text: "Analyze this terrain for a drone landing. Is it safe?"
+          }
+        ]
+      },
+      config: {
+        systemInstruction: DRONE_SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            safe: { type: Type.BOOLEAN },
+            score: { type: Type.NUMBER, description: "Safety score 0-100" },
+            hazards: { 
+              type: Type.ARRAY, 
+              items: { type: Type.STRING } 
+            },
+            recommendation: { type: Type.STRING },
+            slope: { type: Type.STRING, description: "Estimated slope (Flat, Moderate, Steep)" }
+          },
+          required: ["safe", "score", "hazards", "recommendation", "slope"]
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No response from AI");
+    
+    return JSON.parse(text) as LandingAnalysis;
+
+  } catch (error) {
+    console.error("AI Analysis Failed:", error);
+    // Fallback safe default
+    return {
+      safe: false,
+      score: 0,
+      hazards: ["AI Connection Failed", "Unknown Terrain"],
+      recommendation: "Abort landing. Maintain altitude.",
+      slope: "Unknown"
+    };
+  }
+};
+
+export const generateMissionReport = async (logs: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate a brief, tactical post-mission summary based on these logs: ${logs}. Focus on efficiency and anomalies.`
+        });
+        return response.text || "No report generated.";
+    } catch (e) {
+        return "Failed to generate report.";
+    }
+}
