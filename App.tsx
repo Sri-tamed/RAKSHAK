@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Map, Navigation, BarChart3, Radio, PackageOpen, Crosshair, Target } from 'lucide-react';
+import { Map, Navigation, BarChart3, Radio, PackageOpen, Crosshair, Target, Power, Signal } from 'lucide-react';
 import Header from './components/Header';
 import Drone3D from './components/Drone3D';
 import TelemetryPanel from './components/TelemetryPanel';
@@ -12,33 +12,55 @@ const App: React.FC = () => {
   const [flightMode, setFlightMode] = useState<FlightMode>(FlightMode.MANUAL);
   const [selectedPayload, setSelectedPayload] = useState<PayloadType>(PayloadType.NONE);
   const [tilt, setTilt] = useState({ x: 0, z: 0 }); // Joystick simulation
+  const [connectionStatus, setConnectionStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
+  
   const [telemetry, setTelemetry] = useState<TelemetryData>({
     battery: 92,
     altitude: 0,
     speed: 0,
-    signalStrength: 100,
+    signalStrength: 0,
     temperature: 32,
     latitude: 28.6139,
     longitude: 77.2090
   });
 
+  // Handle Drone Connection
+  const toggleConnection = () => {
+    if (connectionStatus === 'CONNECTED') {
+      setConnectionStatus('DISCONNECTED');
+      setTelemetry(prev => ({...prev, signalStrength: 0, speed: 0, altitude: 0}));
+      return;
+    }
+
+    setConnectionStatus('CONNECTING');
+    
+    // Simulate Network Handshake (Bluetooth/5G)
+    setTimeout(() => {
+      setConnectionStatus('CONNECTED');
+      setTelemetry(prev => ({...prev, signalStrength: 100}));
+    }, 2000);
+  };
+
   // Simulate Telemetry Updates
   useEffect(() => {
+    if (connectionStatus !== 'CONNECTED') return;
+
     const interval = setInterval(() => {
       setTelemetry(prev => ({
         ...prev,
         battery: Math.max(0, prev.battery - 0.05),
         altitude: flightMode !== FlightMode.MANUAL ? prev.altitude + (Math.random() - 0.5) : prev.altitude,
         speed: flightMode === FlightMode.AUTONOMOUS ? 15 + Math.random() : prev.speed,
-        temperature: 32 + Math.random() * 2
+        temperature: 32 + Math.random() * 2,
+        signalStrength: Math.max(80, Math.min(100, prev.signalStrength + (Math.random() * 10 - 5)))
       }));
     }, 1000);
     return () => clearInterval(interval);
-  }, [flightMode]);
+  }, [flightMode, connectionStatus]);
 
   // Simple Joystick Handler (Simulated)
   const handleJoystick = (direction: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'STOP') => {
-    if (flightMode !== FlightMode.MANUAL) return;
+    if (flightMode !== FlightMode.MANUAL || connectionStatus !== 'CONNECTED') return;
     
     const newTilt = { ...tilt };
     if (direction === 'UP') newTilt.x = -0.5;
@@ -56,11 +78,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ui-dark text-white font-sans flex flex-col pb-20 md:pb-0">
-      <Header connected={true} battery={Math.floor(telemetry.battery)} />
+      <Header connected={connectionStatus === 'CONNECTED'} battery={Math.floor(telemetry.battery)} />
 
       <main className="flex-1 p-4 max-w-7xl mx-auto w-full space-y-4">
         
-        {/* Navigation Tabs (Top on Mobile, Hidden if sidebar wanted, but keeping simple top logic for now) */}
+        {/* Navigation Tabs */}
         <div className="flex bg-ui-panel p-1 rounded-lg border border-gray-700 md:w-fit mb-4">
           {(['FLY', 'MAP', 'ANALYTICS'] as const).map((tab) => (
             <button
@@ -84,7 +106,16 @@ const App: React.FC = () => {
           <div className="grid lg:grid-cols-3 gap-6 animate-fade-in">
             {/* Left Column: Visuals & Telemetry */}
             <div className="lg:col-span-2 space-y-4">
-              <Drone3D tiltX={tilt.x} tiltZ={tilt.z} />
+              <div className="relative">
+                 <Drone3D tiltX={tilt.x} tiltZ={tilt.z} />
+                 {connectionStatus !== 'CONNECTED' && (
+                   <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center rounded-xl">
+                      <Signal className="w-12 h-12 text-gray-500 mb-2" />
+                      <div className="text-xl font-bold text-gray-400 tracking-widest">SIGNAL LOST</div>
+                      <div className="text-sm text-gray-600">Drone offline. Connect to view feed.</div>
+                   </div>
+                 )}
+              </div>
               <TelemetryPanel data={telemetry} />
               <AILanding />
             </div>
@@ -92,29 +123,46 @@ const App: React.FC = () => {
             {/* Right Column: Controls */}
             <div className="space-y-4">
               
-              {/* Mode Selector */}
+              {/* Connection & Mode Selector */}
               <div className="bg-ui-panel p-4 rounded-xl border border-gray-700">
-                <h3 className="text-gray-400 text-xs font-mono uppercase mb-3">Flight Computer</h3>
-                <div className="flex flex-col gap-2">
-                  {[FlightMode.MANUAL, FlightMode.ASSISTED, FlightMode.AUTONOMOUS].map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setFlightMode(m)}
-                      className={`flex items-center justify-between p-3 rounded border transition-all ${
-                        flightMode === m 
-                          ? 'bg-blue-900/40 border-blue-500 text-blue-200' 
-                          : 'bg-gray-800 border-gray-700 text-gray-400'
-                      }`}
-                    >
-                      <span className="font-bold">{m}</span>
-                      {flightMode === m && <Radio className="w-4 h-4 animate-pulse text-blue-400" />}
-                    </button>
-                  ))}
+                <h3 className="text-gray-400 text-xs font-mono uppercase mb-3">System Link</h3>
+                
+                <button 
+                  onClick={toggleConnection}
+                  disabled={connectionStatus === 'CONNECTING'}
+                  className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 mb-4 transition-all ${
+                    connectionStatus === 'CONNECTED' 
+                      ? 'bg-red-900/30 text-red-400 border border-red-900 hover:bg-red-900/50' 
+                      : 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/50'
+                  }`}
+                >
+                  <Power className={`w-5 h-5 ${connectionStatus === 'CONNECTING' ? 'animate-spin' : ''}`} />
+                  {connectionStatus === 'CONNECTED' ? 'TERMINATE UPLINK' : connectionStatus === 'CONNECTING' ? 'ESTABLISHING HANDSHAKE...' : 'INITIATE UPLINK'}
+                </button>
+
+                <div className={`transition-opacity duration-300 ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                    <h3 className="text-gray-400 text-xs font-mono uppercase mb-3 mt-4">Flight Mode</h3>
+                    <div className="flex flex-col gap-2">
+                    {[FlightMode.MANUAL, FlightMode.ASSISTED, FlightMode.AUTONOMOUS].map((m) => (
+                        <button
+                        key={m}
+                        onClick={() => setFlightMode(m)}
+                        className={`flex items-center justify-between p-3 rounded border transition-all ${
+                            flightMode === m 
+                            ? 'bg-blue-900/40 border-blue-500 text-blue-200' 
+                            : 'bg-gray-800 border-gray-700 text-gray-400'
+                        }`}
+                        >
+                        <span className="font-bold">{m}</span>
+                        {flightMode === m && <Radio className="w-4 h-4 animate-pulse text-blue-400" />}
+                        </button>
+                    ))}
+                    </div>
                 </div>
               </div>
 
               {/* Manual Joystick Pad (Visual Only for Web) */}
-              <div className={`bg-ui-panel p-6 rounded-xl border border-gray-700 flex flex-col items-center justify-center gap-4 ${flightMode !== FlightMode.MANUAL ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div className={`bg-ui-panel p-6 rounded-xl border border-gray-700 flex flex-col items-center justify-center gap-4 transition-opacity duration-300 ${flightMode !== FlightMode.MANUAL || connectionStatus !== 'CONNECTED' ? 'opacity-50 pointer-events-none' : ''}`}>
                  <div className="text-xs text-gray-500 uppercase tracking-widest">Manual Override</div>
                  <div className="relative w-40 h-40 bg-gray-800 rounded-full border-2 border-gray-600 shadow-inner flex items-center justify-center">
                     <div className="absolute top-2 cursor-pointer hover:text-white text-gray-500" onMouseDown={() => handleJoystick('UP')} onMouseUp={() => handleJoystick('STOP')}>
@@ -136,7 +184,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Payload Control */}
-              <div className="bg-ui-panel p-4 rounded-xl border border-gray-700">
+              <div className={`bg-ui-panel p-4 rounded-xl border border-gray-700 transition-opacity duration-300 ${connectionStatus === 'CONNECTED' ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
                 <h3 className="text-gray-400 text-xs font-mono uppercase mb-3">Payload Manager</h3>
                 <div className="grid grid-cols-2 gap-2 mb-4">
                     {[PayloadType.SALINE, PayloadType.BLOOD_UNIT, PayloadType.MEDICINE_KIT].map((p) => (
@@ -171,7 +219,7 @@ const App: React.FC = () => {
                 <span className="bg-black/80 p-4 rounded text-gray-400 backdrop-blur-sm border border-gray-600">
                     Map View Placeholder (Simulated Google Maps SDK)
                     <br/>
-                    <span className="text-xs text-india-saffron mt-2 block text-center">Latitude: {telemetry.latitude} | Longitude: {telemetry.longitude}</span>
+                    <span className="text-xs text-india-saffron mt-2 block text-center">Latitude: {telemetry.latitude.toFixed(4)} | Longitude: {telemetry.longitude.toFixed(4)}</span>
                 </span>
              </div>
              {/* Simulated UI Overlay on Map */}
