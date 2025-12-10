@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Map, Navigation, BarChart3, Radio, PackageOpen, Crosshair, Target, Power, Signal } from 'lucide-react';
+import { Map, Navigation, BarChart3, Radio, PackageOpen, Crosshair, Target, Power, Signal, Locate } from 'lucide-react';
 import Header from './components/Header';
 import Drone3D from './components/Drone3D';
 import TelemetryPanel from './components/TelemetryPanel';
@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [selectedPayload, setSelectedPayload] = useState<PayloadType>(PayloadType.NONE);
   const [tilt, setTilt] = useState({ x: 0, z: 0 }); // Joystick simulation
   const [connectionStatus, setConnectionStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
+  const [recenterMap, setRecenterMap] = useState(false);
   
   const [telemetry, setTelemetry] = useState<TelemetryData>({
     battery: 92,
@@ -74,6 +75,11 @@ const App: React.FC = () => {
     // Update Speed/Alt based on input
     if (direction === 'UP') setTelemetry(t => ({...t, speed: Math.min(20, t.speed + 2), altitude: t.altitude + 1}));
     if (direction === 'DOWN') setTelemetry(t => ({...t, speed: Math.max(0, t.speed - 2), altitude: Math.max(0, t.altitude - 1)}));
+  };
+
+  const handleRecenter = () => {
+    setRecenterMap(true);
+    setTimeout(() => setRecenterMap(false), 1000);
   };
 
   // Helper for joystick button attributes
@@ -213,30 +219,52 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'MAP' && (
-          <div className="h-[75vh] w-full bg-gray-800 rounded-xl overflow-hidden relative border border-gray-700 animate-fade-in shadow-xl">
-             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://api.mapbox.com/styles/v1/mapbox/dark-v10/static/77.2090,28.6139,12,0,0/800x600?access_token=Pk.mock')] bg-cover bg-center opacity-50 flex items-center justify-center">
-                <span className="bg-black/80 p-6 rounded-xl text-gray-400 backdrop-blur-md border border-gray-600 text-center mx-4">
+          <div className="h-[75vh] md:h-[calc(100vh-8rem)] w-full bg-gray-800 rounded-xl overflow-hidden relative border border-gray-700 animate-fade-in shadow-xl group">
+             {/* Map Background with Simulated Movement */}
+             <div className={`absolute top-0 left-0 w-full h-full bg-[url('https://api.mapbox.com/styles/v1/mapbox/dark-v10/static/77.2090,28.6139,12,0,0/800x600?access_token=Pk.mock')] bg-cover bg-center transition-transform duration-1000 ${recenterMap ? 'scale-110' : 'scale-100'} opacity-60`}></div>
+             
+             {/* Center Content */}
+             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span className="bg-black/80 p-6 rounded-xl text-gray-400 backdrop-blur-md border border-gray-600 text-center mx-4 max-w-[90%] md:max-w-md shadow-2xl">
                     <Map className="w-8 h-8 text-india-saffron mx-auto mb-2" />
-                    <div>Map View Placeholder</div>
-                    <div className="text-xs text-gray-500 mt-1">Google Maps SDK Integration</div>
-                    <span className="text-xs text-india-saffron mt-3 block font-mono bg-black/50 p-2 rounded">
-                        LAT: {telemetry.latitude.toFixed(4)} <br/> 
-                        LNG: {telemetry.longitude.toFixed(4)}
-                    </span>
+                    <div className="font-bold text-gray-200">Map View Placeholder</div>
+                    <div className="text-xs text-gray-500 mt-1">Google Maps SDK Integration Required</div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-left">
+                        <div className="bg-gray-900/50 p-2 rounded border border-gray-700">
+                             <span className="text-[10px] text-gray-500 block">LATITUDE</span>
+                             <span className="text-xs font-mono text-india-saffron">{telemetry.latitude.toFixed(6)}</span>
+                        </div>
+                        <div className="bg-gray-900/50 p-2 rounded border border-gray-700">
+                             <span className="text-[10px] text-gray-500 block">LONGITUDE</span>
+                             <span className="text-xs font-mono text-india-saffron">{telemetry.longitude.toFixed(6)}</span>
+                        </div>
+                    </div>
                 </span>
              </div>
-             {/* Simulated UI Overlay on Map */}
-             <div className="absolute top-4 left-4 right-4 md:left-auto md:right-4 bg-ui-dark/90 p-3 rounded-lg backdrop-blur-md border-l-4 border-india-green shadow-lg">
-                <div className="flex justify-between items-start">
+
+             {/* UI Overlay on Map - Top */}
+             <div className="absolute top-4 left-4 right-4 md:w-auto md:right-4 bg-ui-dark/90 p-3 rounded-lg backdrop-blur-md border-l-4 border-india-green shadow-lg z-10">
+                <div className="flex justify-between items-start md:block md:space-y-2">
                     <div>
                         <div className="text-[10px] text-gray-400 uppercase tracking-widest">Active Mission</div>
-                        <div className="font-bold text-white flex items-center gap-2 text-sm md:text-base"><Target className="w-4 h-4 text-red-500" /> Sector 4, Relief Camp</div>
+                        <div className="font-bold text-white flex items-center gap-2 text-sm md:text-base whitespace-nowrap"><Target className="w-4 h-4 text-red-500 animate-pulse" /> Sector 4, Relief Camp</div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right md:text-left md:border-t md:border-gray-700 md:pt-2">
                          <div className="text-xs text-green-400 font-mono">ETA</div>
-                         <div className="font-bold">04:30</div>
+                         <div className="font-bold text-lg md:text-xl">04:30</div>
                     </div>
                 </div>
+             </div>
+
+             {/* Recenter Button - Floating Bottom Right */}
+             <div className="absolute bottom-4 right-4 z-20">
+                <button 
+                  onClick={handleRecenter}
+                  className="bg-ui-panel p-3 md:p-4 rounded-full shadow-xl border border-gray-600 text-white hover:bg-india-navy hover:border-india-saffron active:scale-95 transition-all duration-300 group-hover:animate-bounce-slow"
+                  aria-label="Recenter Map"
+                >
+                   <Locate className={`w-6 h-6 ${recenterMap ? 'animate-spin' : ''}`} />
+                </button>
              </div>
           </div>
         )}
