@@ -29,6 +29,19 @@ export interface LandingAnalysis {
   slope: string;
 }
 
+export interface MissionAlert {
+  timestamp: string;
+  type: 'WARNING' | 'CRITICAL' | 'INFO';
+  message: string;
+}
+
+export interface TelemetrySnapshot {
+  timeOffset: number; // seconds from start
+  altitude: number;
+  battery: number;
+  speed: number;
+}
+
 export interface MissionLog {
   id: string;
   date: string;
@@ -36,4 +49,6 @@ export interface MissionLog {
   status: 'SUCCESS' | 'FAILED' | 'ABORTED';
   duration: string;
   payload: PayloadType;
+  telemetrySnapshots: TelemetrySnapshot[];
+  alerts: MissionAlert[];
 }
