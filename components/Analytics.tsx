@@ -123,44 +123,48 @@ const Analytics: React.FC = () => {
 
         {/* Charts Section */}
         <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-ui-panel p-4 rounded-xl border border-gray-700 h-64">
+            <div className="bg-ui-panel p-4 rounded-xl border border-gray-700 h-64 flex flex-col">
                 <h3 className="text-sm font-medium text-gray-400 mb-4 flex items-center gap-2">
                     <Activity className="w-4 h-4 text-blue-400" /> Flight Profile (Altitude/Speed)
                 </h3>
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={selectedMission.telemetrySnapshots}>
-                        <defs>
-                            <linearGradient id="colorAlt" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                        <XAxis dataKey="timeOffset" hide />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip 
-                            contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
-                            labelFormatter={(label) => `${label}s`}
-                        />
-                        <Area type="monotone" dataKey="altitude" stroke="#3b82f6" fillOpacity={1} fill="url(#colorAlt)" name="Altitude (m)" />
-                        <Line type="monotone" dataKey="speed" stroke="#138808" dot={false} strokeWidth={2} name="Speed (m/s)" />
-                    </AreaChart>
-                </ResponsiveContainer>
+                <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={selectedMission.telemetrySnapshots}>
+                            <defs>
+                                <linearGradient id="colorAlt" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <XAxis dataKey="timeOffset" hide />
+                            <YAxis stroke="#94a3b8" fontSize={10} />
+                            <Tooltip 
+                                contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
+                                labelFormatter={(label) => `${label}s`}
+                            />
+                            <Area type="monotone" dataKey="altitude" stroke="#3b82f6" fillOpacity={1} fill="url(#colorAlt)" name="Altitude (m)" />
+                            <Line type="monotone" dataKey="speed" stroke="#138808" dot={false} strokeWidth={2} name="Speed (m/s)" />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
 
-            <div className="bg-ui-panel p-4 rounded-xl border border-gray-700 h-64">
+            <div className="bg-ui-panel p-4 rounded-xl border border-gray-700 h-64 flex flex-col">
                 <h3 className="text-sm font-medium text-gray-400 mb-4 flex items-center gap-2">
                     <Battery className="w-4 h-4 text-green-400" /> Battery Consumption
                 </h3>
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={selectedMission.telemetrySnapshots}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                        <XAxis dataKey="timeOffset" hide />
-                        <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={10} />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }} />
-                        <Line type="monotone" dataKey="battery" stroke="#10b981" strokeWidth={2} dot={false} name="Battery %" />
-                    </LineChart>
-                </ResponsiveContainer>
+                <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={selectedMission.telemetrySnapshots}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <XAxis dataKey="timeOffset" hide />
+                            <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={10} />
+                            <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }} />
+                            <Line type="monotone" dataKey="battery" stroke="#10b981" strokeWidth={2} dot={false} name="Battery %" />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
         </div>
 
@@ -223,18 +227,20 @@ const Analytics: React.FC = () => {
       </div>
 
       {/* Main Graph */}
-      <div className="bg-ui-panel p-4 rounded-lg border border-gray-700 h-64">
+      <div className="bg-ui-panel p-4 rounded-lg border border-gray-700 h-64 flex flex-col">
         <h3 className="text-white font-medium mb-4">Mission Success & Accuracy Trend</h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={OVERALL_STATS_DATA}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis dataKey="name" stroke="#94a3b8" />
-            <YAxis stroke="#94a3b8" />
-            <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }} />
-            <Line type="monotone" dataKey="success" stroke="#138808" strokeWidth={2} name="Success Rate" />
-            <Line type="monotone" dataKey="accuracy" stroke="#FF9933" strokeWidth={2} name="Drop Accuracy" />
-          </LineChart>
-        </ResponsiveContainer>
+        <div className="flex-1 w-full min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={OVERALL_STATS_DATA}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" />
+                <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }} />
+                <Line type="monotone" dataKey="success" stroke="#138808" strokeWidth={2} name="Success Rate" />
+                <Line type="monotone" dataKey="accuracy" stroke="#FF9933" strokeWidth={2} name="Drop Accuracy" />
+            </LineChart>
+            </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Mission List */}

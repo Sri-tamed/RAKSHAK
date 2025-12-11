@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
+import { ScanEye } from 'lucide-react';
 
 const Propeller = ({ position }: { position: [number, number, number] }) => {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -85,18 +86,35 @@ interface Drone3DProps {
 
 const Drone3D: React.FC<Drone3DProps> = ({ tiltX, tiltZ }) => {
   return (
-    <div className="w-full h-64 md:h-80 relative rounded-xl overflow-hidden bg-gradient-to-b from-gray-900 to-gray-800 border border-gray-700 shadow-2xl">
-      <div className="absolute top-4 left-4 z-10">
+    <div className="w-full h-64 md:h-80 relative rounded-xl overflow-hidden bg-gradient-to-b from-gray-900 to-gray-800 border border-gray-700 shadow-2xl touch-none group">
+      <div className="absolute top-4 left-4 z-10 pointer-events-none">
          <div className="text-xs text-gray-400 font-mono">VISUAL FEED // 3D TWIN</div>
          <div className="text-xs text-green-500 font-mono animate-pulse">LIVE SYNC</div>
       </div>
+      
+      {/* Interaction Hint */}
+      <div className="absolute bottom-3 right-3 z-10 pointer-events-none transition-opacity duration-500 opacity-60 group-hover:opacity-0">
+        <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full border border-gray-700/50">
+            <ScanEye className="w-3 h-3 text-white" />
+            <span className="text-[10px] text-gray-300 font-medium tracking-wider">INTERACTIVE</span>
+        </div>
+      </div>
+
       <Canvas>
         <PerspectiveCamera makeDefault position={[0, 2, 4]} />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
         <spotLight position={[-10, 5, 0]} intensity={0.8} />
         <DroneModel tiltX={tiltX} tiltZ={tiltZ} />
-        <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2} />
+        <OrbitControls 
+          enableZoom={true} 
+          enablePan={false} 
+          maxPolarAngle={Math.PI / 1.5}
+          minDistance={2}
+          maxDistance={8}
+          rotateSpeed={0.6}
+          zoomSpeed={0.8}
+        />
         <gridHelper args={[20, 20, 0x444444, 0x222222]} position={[0, -1, 0]} />
       </Canvas>
     </div>
