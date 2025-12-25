@@ -6,6 +6,7 @@ import TelemetryPanel from './components/TelemetryPanel';
 import AILanding from './components/AILanding';
 import Analytics from './components/Analytics';
 import { TelemetryData, FlightMode, PayloadType } from './types';
+import MapView from "./components/MapView";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'FLY' | 'MAP' | 'ANALYTICS'>('FLY');
