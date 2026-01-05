@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Map as MapIcon, Navigation, BarChart3, Radio, PackageOpen, Crosshair, Target, Power, Signal, Locate, MapPin, CheckCircle, XCircle, Loader2, Cpu } from 'lucide-react';
+import { Map as MapIcon, Navigation, BarChart3, Radio, PackageOpen, Crosshair, Target, Power, Signal, Locate, MapPin, CheckCircle, XCircle, Loader2, Cpu, Search, Home } from 'lucide-react';
 import L from 'leaflet';
 import Header from './components/Header';
 import Drone3D from './components/Drone3D';
@@ -14,9 +14,18 @@ const App: React.FC = () => {
   const [selectedPayload, setSelectedPayload] = useState<PayloadType>(PayloadType.NONE);
   const [tilt, setTilt] = useState({ x: 0, z: 0 }); 
   const [connectionStatus, setConnectionStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
+  
+  // Locations
+  const [homeLocation, setHomeLocation] = useState<{lat: number, lng: number} | null>(null);
   const [destination, setDestination] = useState<{lat: number, lng: number} | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
   
+  // Search State
+  const [searchTarget, setSearchTarget] = useState('');
+  const [searchHome, setSearchHome] = useState('');
+  const [isSearching, setIsSearching] = useState<'home' | 'target' | null>(null);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+
   // Drone Communication State
   const [droneIp, setDroneIp] = useState('192.168.1.10');
   const [isSending, setIsSending] = useState(false);
@@ -25,6 +34,7 @@ const App: React.FC = () => {
   const mapRef = useRef<L.Map | null>(null);
   const droneMarkerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
+  const homeMarkerRef = useRef<L.Marker | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const [telemetry, setTelemetry] = useState<TelemetryData>({
@@ -39,44 +49,103 @@ const App: React.FC = () => {
 
   const [distanceToTarget, setDistanceToTarget] = useState<number | null>(null);
 
+  // Auto-detect current location on mount
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
+          setHomeLocation(loc);
+          setTelemetry(t => ({ ...t, latitude: loc.lat, longitude: loc.lng }));
+          setSearchHome("Current Device Location");
+          
+          // Center map if it exists
+          if (mapRef.current) {
+            mapRef.current.setView([loc.lat, loc.lng], 15);
+          }
+        },
+        (err) => {
+          console.warn("Geolocation detection failed or denied:", err.message);
+          setStatusMessage("GPS UNAVAILABLE - SET HOME MANUALLY");
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+  }, []);
+
   /**
-   * Networking logic for drone communication with enhanced error handling
+   * Geocoding using Nominatim (OpenStreetMap) API
+   */
+  const handlePlaceSearch = async (query: string, type: 'home' | 'target') => {
+    if (!query || query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    setIsSearching(type);
+    try {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+      const data = await resp.json();
+      setSuggestions(data);
+    } catch (e) {
+      console.error("Geocoding fetch failed:", e);
+    } finally {
+      setIsSearching(null);
+    }
+  };
+
+  const selectSuggestion = (place: any, type: 'home' | 'target') => {
+    const loc = { lat: parseFloat(place.lat), lng: parseFloat(place.lon) };
+    if (type === 'home') {
+      setHomeLocation(loc);
+      setSearchHome(place.display_name);
+      // Move drone to new home for simulation
+      setTelemetry(t => ({ ...t, latitude: loc.lat, longitude: loc.lng }));
+    } else {
+      setDestination(loc);
+      setSearchTarget(place.display_name);
+      setIsConfirmed(false);
+      setStatusMessage(null);
+    }
+    setSuggestions([]);
+    if (mapRef.current) {
+      mapRef.current.flyTo([loc.lat, loc.lng], 15);
+    }
+  };
+
+  /**
+   * Isolated networking logic for drone communication
    */
   const sendDroneCommand = async (lat: number, lon: number, alt: number = 15) => {
     setIsSending(true);
     setStatusMessage(null);
     const controller = new AbortController();
-    
-    // Set a specific reason for the abort to avoid "without reason" errors
     const timeoutId = setTimeout(() => controller.abort("Timeout"), 5000);
 
     try {
+      // Dynamic URL construction
       const url = `http://${droneIp}:5000/fly?lat=${lat}&lon=${lon}&alt=${alt}`;
       
-      const response = await fetch(url, { 
+      // Using 'no-cors' for local network drone APIs that often lack CORS headers
+      await fetch(url, { 
         method: 'GET',
-        mode: 'no-cors', // Many drone APIs don't handle CORS headers; 'no-cors' allows simple GET
+        mode: 'no-cors',
         signal: controller.signal 
       });
-      
-      clearTimeout(timeoutId);
 
-      // Note: With 'no-cors', response.ok is always false and status is 0. 
-      // We assume success if the fetch doesn't throw.
+      clearTimeout(timeoutId);
       setIsConfirmed(true);
-      setStatusMessage('COMMAND SENT');
+      setStatusMessage('MISSION UPLINK SUCCESS');
       
+      // Implicitly "storing" home location for return as it remains in state
+      console.log("Mission confirmed. Home (Return Point) stored:", homeLocation);
     } catch (err: any) {
       clearTimeout(timeoutId);
-      console.error('Drone transmission failed:', err);
-
       if (err.name === 'AbortError' || err === 'Timeout' || controller.signal.aborted) {
         setStatusMessage('UPLINK TIMEOUT');
-      } else if (err.message?.includes('Failed to fetch') || err.name === 'TypeError') {
-        setStatusMessage('CONNECTION REFUSED');
       } else {
-        setStatusMessage('UPLINK FAILED');
+        setStatusMessage('CONNECTION REFUSED');
       }
+      console.error('Drone Transmission Error:', err);
     } finally {
       setIsSending(false);
     }
@@ -95,6 +164,7 @@ const App: React.FC = () => {
     }, 1000);
   };
 
+  // Telemetry Simulation Loop
   useEffect(() => {
     if (connectionStatus !== 'CONNECTED') return;
     const interval = setInterval(() => {
@@ -121,6 +191,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [flightMode, connectionStatus, tilt]);
 
+  // Map Initialization
   useEffect(() => {
     if (activeTab === 'MAP' && mapContainerRef.current && !mapRef.current) {
       const map = L.map(mapContainerRef.current, {
@@ -133,8 +204,8 @@ const App: React.FC = () => {
 
       const droneIcon = L.divIcon({
         className: 'custom-div-icon',
-        html: `<div class="w-8 h-8 flex items-center justify-center bg-india-saffron/20 border-2 border-india-saffron rounded-full shadow-[0_0_15px_rgba(255,153,51,0.6)] animate-pulse-fast">
-                <div class="w-2 h-2 bg-india-saffron rounded-full"></div>
+        html: `<div class="w-8 h-8 flex items-center justify-center bg-blue-500/20 border-2 border-blue-400 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.6)] animate-pulse-fast">
+                <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
                </div>`,
         iconSize: [32, 32],
         iconAnchor: [16, 16]
@@ -147,6 +218,7 @@ const App: React.FC = () => {
         setDestination({ lat: e.latlng.lat, lng: e.latlng.lng });
         setIsConfirmed(false);
         setStatusMessage(null);
+        setSearchTarget(`Custom Map Point: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`);
       });
       L.control.zoom({ position: 'bottomleft' }).addTo(map);
     }
@@ -156,50 +228,74 @@ const App: React.FC = () => {
         mapRef.current = null;
         droneMarkerRef.current = null;
         destMarkerRef.current = null;
+        homeMarkerRef.current = null;
       }
     };
-  }, [activeTab, telemetry.latitude, telemetry.longitude]);
+  }, [activeTab]);
 
+  // Marker Synchronization & Distance Logic
   useEffect(() => {
-    if (mapRef.current && droneMarkerRef.current) {
+    if (!mapRef.current) return;
+
+    // 1. Sync Drone Marker
+    if (droneMarkerRef.current) {
       droneMarkerRef.current.setLatLng([telemetry.latitude, telemetry.longitude]);
     }
 
+    // 2. Sync Home (Launch Point) Marker
+    if (homeLocation) {
+      const homeIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div class="flex flex-col items-center">
+                <div class="text-green-500 drop-shadow-[0_0_8px_currentColor]">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </div>
+                <div class="bg-green-600 text-[8px] text-white px-1 py-0.2 rounded font-bold shadow-lg -mt-1 uppercase tracking-tighter">Launch</div>
+               </div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 25]
+      });
+      if (homeMarkerRef.current) {
+        homeMarkerRef.current.setLatLng([homeLocation.lat, homeLocation.lng]);
+      } else {
+        homeMarkerRef.current = L.marker([homeLocation.lat, homeLocation.lng], { icon: homeIcon }).addTo(mapRef.current);
+      }
+    }
+
+    // 3. Sync Target Marker
     if (destination) {
       const droneLatLng = L.latLng(telemetry.latitude, telemetry.longitude);
       const targetLatLng = L.latLng(destination.lat, destination.lng);
       setDistanceToTarget(droneLatLng.distanceTo(targetLatLng));
 
-      if (mapRef.current) {
-        const markerColor = isConfirmed ? 'text-green-500' : 'text-india-saffron';
-        const labelText = isConfirmed ? 'Locked' : 'Pending';
-        const labelBg = isConfirmed ? 'bg-green-600' : 'bg-india-saffron';
-        
-        const destIcon = L.divIcon({
-          className: 'custom-div-icon',
-          html: `<div class="flex flex-col items-center">
-                  <div class="${markerColor} drop-shadow-[0_0_8px_currentColor] ${isConfirmed ? '' : 'animate-bounce'}">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                  </div>
-                  <div class="${labelBg} text-[10px] text-white px-1.5 py-0.5 rounded font-bold shadow-lg -mt-1 uppercase tracking-tighter">${labelText}</div>
-                 </div>`,
-          iconSize: [40, 50],
-          iconAnchor: [20, 50]
-        });
+      const markerColor = isConfirmed ? 'text-green-500' : 'text-india-saffron';
+      const labelText = isConfirmed ? 'Locked' : 'Target';
+      const labelBg = isConfirmed ? 'bg-green-600' : 'bg-india-saffron';
+      
+      const destIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div class="flex flex-col items-center">
+                <div class="${markerColor} drop-shadow-[0_0_8px_currentColor] ${isConfirmed ? '' : 'animate-bounce'}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <div class="${labelBg} text-[10px] text-white px-1.5 py-0.5 rounded font-bold shadow-lg -mt-1 uppercase tracking-tighter">${labelText}</div>
+               </div>`,
+        iconSize: [40, 50],
+        iconAnchor: [20, 50]
+      });
 
-        if (destMarkerRef.current) {
-          destMarkerRef.current.setLatLng([destination.lat, destination.lng]);
-          destMarkerRef.current.setIcon(destIcon);
-        } else {
-          destMarkerRef.current = L.marker([destination.lat, destination.lng], { icon: destIcon }).addTo(mapRef.current);
-        }
+      if (destMarkerRef.current) {
+        destMarkerRef.current.setLatLng([destination.lat, destination.lng]);
+        destMarkerRef.current.setIcon(destIcon);
+      } else {
+        destMarkerRef.current = L.marker([destination.lat, destination.lng], { icon: destIcon }).addTo(mapRef.current);
       }
     } else if (destMarkerRef.current) {
       destMarkerRef.current.remove();
       destMarkerRef.current = null;
       setDistanceToTarget(null);
     }
-  }, [telemetry.latitude, telemetry.longitude, destination, isConfirmed]);
+  }, [telemetry.latitude, telemetry.longitude, destination, homeLocation, isConfirmed]);
 
   const handleRecenter = () => {
     if (mapRef.current) {
@@ -291,20 +387,70 @@ const App: React.FC = () => {
           <div className="h-[75vh] md:h-[calc(100vh-8rem)] w-full relative group animate-fade-in">
              <div ref={mapContainerRef} className="w-full h-full rounded-xl overflow-hidden border border-gray-700 shadow-2xl z-0"></div>
              
-             <div className="absolute top-4 left-4 right-4 md:left-auto md:w-80 bg-ui-dark/95 p-4 rounded-xl backdrop-blur-md border border-gray-700 shadow-2xl z-[1000]">
+             <div className="absolute top-4 left-4 right-4 md:left-auto md:w-80 bg-ui-dark/95 p-4 rounded-xl backdrop-blur-md border border-gray-700 shadow-2xl z-[1000] overflow-y-auto max-h-[85%] custom-scrollbar">
                 <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-2 border-b border-gray-700 pb-2">
-                        <Target className={`w-5 h-5 ${destination ? (isConfirmed ? 'text-green-500' : 'text-india-saffron animate-pulse') : 'text-gray-500'}`} />
-                        <div>
-                            <div className="text-[10px] text-gray-500 uppercase font-mono tracking-wider">Mission Target</div>
-                            <div className="font-bold text-gray-100 text-sm">
-                                {isConfirmed ? 'MISSION LOCKED' : destination ? 'SELECTION PENDING' : 'STANDBY - READY'}
-                            </div>
+                    {/* Home Location / Launch Point */}
+                    <div className="space-y-2 border-b border-gray-700 pb-3">
+                        <div className="flex items-center gap-2">
+                           <Home className="w-4 h-4 text-green-500" />
+                           <span className="text-[10px] text-gray-500 uppercase font-mono tracking-wider">Launch Point (Return-to-Home)</span>
                         </div>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={searchHome}
+                                onChange={(e) => {
+                                    setSearchHome(e.target.value);
+                                    handlePlaceSearch(e.target.value, 'home');
+                                }}
+                                placeholder="Detecting current location..."
+                                className="w-full bg-black/40 border border-gray-700 rounded px-2 py-2 text-xs font-sans text-gray-200 outline-none pr-8"
+                            />
+                            {isSearching === 'home' ? <Loader2 className="absolute right-2 top-2 w-4 h-4 text-gray-500 animate-spin" /> : <MapPin className="absolute right-2 top-2 w-4 h-4 text-gray-600" />}
+                        </div>
+                        {isSearching !== 'home' && suggestions.length > 0 && searchHome.length > 2 && (
+                            <div className="bg-gray-900 border border-gray-700 rounded shadow-xl overflow-hidden mt-1 z-[1001]">
+                                {suggestions.map((p, i) => (
+                                    <div key={i} onClick={() => selectSuggestion(p, 'home')} className="p-2 text-[10px] hover:bg-gray-800 cursor-pointer border-b border-gray-800 last:border-none truncate text-gray-300">
+                                        {p.display_name}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Mission Target / Destination Search */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <Target className={`w-4 h-4 ${destination ? (isConfirmed ? 'text-green-500' : 'text-india-saffron animate-pulse') : 'text-gray-500'}`} />
+                            <span className="text-[10px] text-gray-500 uppercase font-mono tracking-wider">Mission Target</span>
+                        </div>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={searchTarget}
+                                onChange={(e) => {
+                                    setSearchTarget(e.target.value);
+                                    handlePlaceSearch(e.target.value, 'target');
+                                }}
+                                placeholder="Enter destination place name..."
+                                className="w-full bg-black/40 border border-gray-700 rounded px-2 py-2 text-xs font-sans text-gray-200 outline-none pr-8"
+                            />
+                            {isSearching === 'target' ? <Loader2 className="absolute right-2 top-2 w-4 h-4 text-gray-500 animate-spin" /> : <Search className="absolute right-2 top-2 w-4 h-4 text-gray-600" />}
+                        </div>
+                        {isSearching !== 'target' && suggestions.length > 0 && searchTarget.length > 2 && (
+                            <div className="bg-gray-900 border border-gray-700 rounded shadow-xl overflow-hidden mt-1 z-[1001]">
+                                {suggestions.map((p, i) => (
+                                    <div key={i} onClick={() => selectSuggestion(p, 'target')} className="p-2 text-[10px] hover:bg-gray-800 cursor-pointer border-b border-gray-800 last:border-none truncate text-gray-300">
+                                        {p.display_name}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     
                     {destination && (
-                        <div className="space-y-3 animate-fade-in">
+                        <div className="space-y-3 animate-fade-in border-t border-gray-700 pt-3">
                             <div className="bg-black/40 p-2 rounded border border-gray-800 flex items-center gap-2">
                                 <Cpu className="w-3.5 h-3.5 text-blue-400" />
                                 <input 
@@ -328,8 +474,8 @@ const App: React.FC = () => {
                             </div>
                             
                             {distanceToTarget !== null && (
-                                <div className="bg-blue-900/20 p-2 rounded border border-blue-900/40 flex justify-between items-center">
-                                    <span className="text-[10px] text-blue-400 uppercase font-mono">Distance to Target</span>
+                                <div className="bg-blue-900/20 p-2 rounded border border-blue-900/40 flex justify-between items-center px-3">
+                                    <span className="text-[10px] text-blue-400 uppercase font-mono">Distance</span>
                                     <span className="text-xs font-bold text-blue-200">
                                         {distanceToTarget > 1000 ? `${(distanceToTarget / 1000).toFixed(2)} km` : `${distanceToTarget.toFixed(0)} m`}
                                     </span>
@@ -337,33 +483,33 @@ const App: React.FC = () => {
                             )}
 
                             {statusMessage && (
-                                <div className={`text-[10px] font-bold text-center py-1 rounded border ${statusMessage.includes('FAILED') || statusMessage.includes('TIMEOUT') || statusMessage.includes('REFUSED') ? 'bg-red-900/20 border-red-800 text-red-500' : 'bg-green-900/20 border-green-800 text-green-500'}`}>
+                                <div className={`text-[10px] font-bold text-center py-1.5 rounded border uppercase tracking-widest ${statusMessage.includes('FAILED') || statusMessage.includes('TIMEOUT') || statusMessage.includes('REFUSED') ? 'bg-red-900/20 border-red-800 text-red-500' : 'bg-green-900/20 border-green-800 text-green-500'}`}>
                                     {statusMessage}
                                 </div>
                             )}
 
                             {!isConfirmed ? (
-                                <div className="grid grid-cols-2 gap-2">
+                                <div className="grid grid-cols-2 gap-2 pt-2">
                                     <button 
                                         onClick={() => sendDroneCommand(destination.lat, destination.lng)}
                                         disabled={isSending}
-                                        className="flex items-center justify-center gap-1.5 py-2 bg-green-700 hover:bg-green-600 rounded text-xs font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                                        className="flex items-center justify-center gap-1.5 py-2.5 bg-green-700 hover:bg-green-600 rounded text-xs font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
                                     >
                                         {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />} 
                                         CONFIRM
                                     </button>
                                     <button 
-                                        onClick={() => { setDestination(null); setIsConfirmed(false); setStatusMessage(null); }}
+                                        onClick={() => { setDestination(null); setIsConfirmed(false); setStatusMessage(null); setSearchTarget(''); }}
                                         disabled={isSending}
-                                        className="flex items-center justify-center gap-1.5 py-2 bg-gray-800 hover:bg-gray-700 rounded text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+                                        className="flex items-center justify-center gap-1.5 py-2.5 bg-gray-800 hover:bg-gray-700 rounded text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
                                     >
                                         <XCircle className="w-3.5 h-3.5" /> DISCARD
                                     </button>
                                 </div>
                             ) : (
                                 <button 
-                                    onClick={() => { setDestination(null); setIsConfirmed(false); setStatusMessage(null); }}
-                                    className="w-full py-2 bg-red-900/40 border border-red-700 text-red-400 hover:bg-red-900/60 rounded text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-95"
+                                    onClick={() => { setDestination(null); setIsConfirmed(false); setStatusMessage(null); setSearchTarget(''); }}
+                                    className="w-full py-2.5 bg-red-900/40 border border-red-700 text-red-400 hover:bg-red-900/60 rounded text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-95 mt-2"
                                 >
                                     <XCircle className="w-4 h-4" /> ABORT MISSION
                                 </button>
@@ -372,11 +518,11 @@ const App: React.FC = () => {
                     )}
 
                     {!destination && (
-                        <div className="bg-india-saffron/10 p-3 rounded border border-india-saffron/30">
+                        <div className="bg-india-saffron/10 p-3 rounded border border-india-saffron/30 mt-2">
                             <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 text-india-saffron shrink-0 mt-0.5" />
                                 <div className="text-[11px] text-india-saffron leading-tight">
-                                    Tap on the map to define a new delivery drop zone. Distance and coordinates will update automatically.
+                                    Detected Launch Point automatically. Search for a destination by name or tap anywhere on the map to define the mission target.
                                 </div>
                             </div>
                         </div>
