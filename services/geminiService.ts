@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { LandingAnalysis } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // System instruction for the drone AI
 const DRONE_SYSTEM_INSTRUCTION = `
