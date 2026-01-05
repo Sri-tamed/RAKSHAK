@@ -1,8 +1,18 @@
 import React, { useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, ThreeElements } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { ScanEye } from 'lucide-react';
+
+// Fix: Correctly extending the React JSX namespace to include Three.js intrinsic elements.
+// This resolves "Property does not exist on type 'JSX.IntrinsicElements'" errors and type definition issues in React 18+ environments.
+declare global {
+  namespace React {
+    namespace JSX {
+      interface IntrinsicElements extends ThreeElements {}
+    }
+  }
+}
 
 const Propeller = ({ position }: { position: [number, number, number] }) => {
   const meshRef = useRef<THREE.Mesh>(null);
