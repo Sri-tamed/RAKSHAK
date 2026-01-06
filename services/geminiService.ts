@@ -3,7 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { LandingAnalysis } from "../types";
 
 // Initialize the Google GenAI client with the required parameter format.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// @ts-ignore
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
 // System instruction for the drone AI
 const DRONE_SYSTEM_INSTRUCTION = `
